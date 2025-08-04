@@ -26,7 +26,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Build application
-        run: pyinstaller main.py --onefile
+        run: pyinstaller main.py --onefile --noconsole
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
-        go-version: [1.18]
+        go-version: [1.19]  # Обновлено до Go 1.19
 
     steps:
     - name: Checkout code
@@ -28,10 +28,35 @@ jobs:
     - name: Initialize Go module
       run: go mod init your_project_name
 
+    - name: Install dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgl1-mesa-dev xorg-dev libgtk-3-dev libwebkit2gtk-4.0-dev
+        go install fyne.io/fyne/v2@latest
+        go install github.com/webview/webview_go@latest
+
+    - name: Install vcpkg
+      if: matrix.os == 'windows-latest'
+      run: |
+        git clone https://github.com/microsoft/vcpkg
+        cd vcpkg
+        ./bootstrap-vcpkg.bat
+        ./vcpkg integrate install
+
+    - name: Install dependencies with vcpkg
+      if: matrix.os == 'windows-latest'
+      run: |
+        cd vcpkg
+        ./vcpkg install glfw3:x64-windows gtk:x64-windows webkit2gtk:x64-windows
+        echo "VCPKG_ROOT=$(pwd)" >> $GITHUB_ENV
+
     - name: Tidy dependencies
       run: go mod tidy
 
     - name: Build application
+      env:
+        VCPKG_ROOT: ${{ env.VCPKG_ROOT }}
       run: |
         if [ "$RUNNER_OS" == "Windows" ]; then
           GOOS=windows GOARCH=amd64 go build -o myapp.exe .

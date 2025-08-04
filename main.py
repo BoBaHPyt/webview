@@ -1,4 +1,9 @@
-import webview
+from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEngineProfile
+from PyQt6.QtCore import QUrl
+from PyQt6.QtNetwork import QNetworkCookie
+from http.cookies import SimpleCookie
 import json
 import urllib.parse
 import sys
@@ -141,13 +146,22 @@ class WindowsInstaller(AutoTraderInstaller):
             print(f"❌ Failed to install on Windows: {e}")
             return False
 
-        
-class AutoTraderApp:
+
+class AutoTraderApp(QMainWindow):
     USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
     
     def __init__(self):
-        self.window = None
+        super().__init__()
+        self.setWindowTitle("AutoTrader")
+        self.setGeometry(100, 100, 800, 600)
+        self.browser = QWebEngineView()
+        profile = self.browser.page().profile()
+        profile.setHttpUserAgent(self.USER_AGENT)
+        self.cookie_store = profile.cookieStore()
+        self.setCentralWidget(self.browser)
+        
         self.cookies = None
+        self.host = None
         self.target_url = None
         
     def parse_custom_url(self, url):
@@ -168,41 +182,41 @@ class AutoTraderApp:
             target_url = f"https://{parsed.netloc}{parsed.path}"
             target_url = target_url.replace("https://https://", "https://")
             
-            return target_url, cookies
+            return target_url, parsed.hostname, cookies
         except Exception as e:
             print(f"Error parsing URL: {e}")
             return 'https://market.csgo.com', None
     
     def set_cookies(self):
         """Установка куков после загрузки страницы"""
-        if self.cookies:
-            for cookie in self.window.get_cookies():
-                for cookie in cookie.values():
-                    if self.cookies.get(cookie.key) == cookie.value:
-                        del self.cookies[cookie.key]
-            if self.cookies:
-                js_code = ""
-                for key, value in self.cookies.items():
-                    js_code += f'document.cookie = "{key}={value}";'
-                self.window.clear_cookies()
-                self.window.evaluate_js(js_code)
-                self.window.load_url(f"{self.target_url}?1")
+        sc = SimpleCookie()
+        for key, value in self.cookies.items():
+            sc[key] = value.replace(":", "%3A")
+            sc[key]['samesite'] = None
+            sc[key]['secure'] = True
+            sc[key]['domain'] = self.host
+
+        contents = sc.output().encode('ascii')
+        contents = contents.replace(b"Set-Cookie: ", b"")
+        print(contents)
+        self.cookie_store.deleteAllCookies()
+        for qt_cookie in QNetworkCookie.parseCookies(contents):
+            self.cookie_store.setCookie(qt_cookie)#, QUrl(self.target_url))
     
     def start_app(self, initial_url=None):
         """Запуск приложения"""
         if initial_url and initial_url.startswith('autotrader://'):
-            self.target_url, self.cookies = self.parse_custom_url(initial_url)
+            self.target_url, self.host, self.cookies = self.parse_custom_url(initial_url)
         else:
             self.target_url = 'https://market.csgo.com'
             self.cookies = None
+            self.host = None
         
-        self.window = webview.create_window('AutoTrader App', self.target_url)
-        
-        if self.cookies:
-            self.window.events.loaded += self.set_cookies
-        
-        webview.start(user_agent=self.USER_AGENT, ssl=True)
+        self.set_cookies()
+        self.browser.load(QUrl(self.target_url))
+        # self.browser.reload()
 
+        
 def get_installer():
     """Получение инсталлера для текущей ОС"""
     system = platform.system().lower()
@@ -220,9 +234,14 @@ def main():
         for argv in sys.argv:
             if argv.startswith('autotrader://'):
                 # Запуск с URL-схемой
-                app = AutoTraderApp()
-                app.start_app(sys.argv[1])
+                app = QApplication(["AutoTraderApp"])
+                window = AutoTraderApp()
+                window.start_app(argv)
+                window.show()
+                app.exec()
                 return
+
+    # Установка обработчика URL-схемы
     try:
         installer = get_installer()
         if installer.install():

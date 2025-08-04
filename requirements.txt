@@ -1,6 +1,11 @@
-pywebview
-pywebview[qt]
-pywebview[cef]
-pywebview[ssl]
-pyinstaller
-cryptography
+altgraph==0.17.4
+importlib_metadata==8.7.0
+packaging==25.0
+pyinstaller==6.15.0
+pyinstaller-hooks-contrib==2025.8
+PyQt6==6.9.1
+PyQt6-Qt6==6.9.1
+PyQt6-WebEngine==6.9.0
+PyQt6-WebEngine-Qt6==6.9.1
+PyQt6_sip==13.10.2
+zipp==3.23.0

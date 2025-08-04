@@ -19,20 +19,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-    with:
-      python-version: '3.9'
-      cache: 'pip' # caching pip dependencies
-    - name: Initialize pip
-      run: pip install --upgrade pip
+        with:
+          python-version: '3.9'
+          cache: 'pip' # caching pip dependencies
+      - name: Initialize pip
+        run: pip install --upgrade pip
 
-    - name: Install dependencies
-      run: pip install -r requirements.txt
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
-    - name: Build application
-      run: pyinstaller test.py --onefile
+      - name: Build application
+        run: pyinstaller test.py --onefile
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: webview-${{ matrix.os }}
-        path: dist/test/*
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: webview-${{ matrix.os }}
+          path: dist/test/*

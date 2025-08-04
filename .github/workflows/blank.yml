@@ -25,10 +25,13 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
 
+    - name: Initialize Go module
+      run: go mod init your_project_name
+
     - name: Install dependencies
       run: |
-        go get fyne.io/fyne/v2
-        go get github.com/webview/webview
+        go install fyne.io/fyne/v2@latest
+        go install github.com/webview/webview@latest
 
     - name: Build application
       run: |

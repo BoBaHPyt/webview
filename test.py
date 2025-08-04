@@ -186,12 +186,10 @@ class AutoTraderApp:
                     js_code += f'document.cookie = "{key}={value}";'
                 self.window.clear_cookies()
                 self.window.evaluate_js(js_code)
-                #self.window.load_url(f"{self.target_url}?1")
+                self.window.load_url(f"{self.target_url}?1")
     
     def start_app(self, initial_url=None):
         """Запуск приложения"""
-        with open("/home/bobah/tmp", "a") as file:
-            file.write(initial_url)
         if initial_url and initial_url.startswith('autotrader://'):
             self.target_url, self.cookies = self.parse_custom_url(initial_url)
         else:
@@ -218,38 +216,23 @@ def get_installer():
 def main():
     """Основная функция приложения"""
     # Проверяем команды установки
-    with open("/home/bobah/tmp", "w") as file:
-            file.write("hello\n")
     if len(sys.argv) > 1:
         for argv in sys.argv:
-            if argv in ['--install', '--setup', 'install', 'setup']:
-                # Установка обработчика URL-схемы
-                try:
-                    installer = get_installer()
-                    if installer.install():
-                        print("🎉 Installation completed successfully!")
-                    else:
-                        print("⚠️  Installation completed with warnings.")
-                    return
-                except Exception as e:
-                    print(f"❌ Installation failed: {e}")
-                    return
-            elif argv.startswith('autotrader://'):
+            if argv.startswith('autotrader://'):
                 # Запуск с URL-схемой
                 app = AutoTraderApp()
                 app.start_app(sys.argv[1])
                 return
-    
-    # Нормальный запуск приложения
-    print("🚀 Starting AutoTrader App...")
-    print("🔧 To install URL scheme handler, run with --install flag")
-    
-    # Автоматическая установка при первом запуске (опционально)
-    # installer = get_installer()
-    # installer.install()
-    
-    app = AutoTraderApp()
-    app.start_app()
+    try:
+        installer = get_installer()
+        if installer.install():
+            print("🎉 Installation completed successfully!")
+        else:
+            print("⚠️  Installation completed with warnings.")
+        return
+    except Exception as e:
+        print(f"❌ Installation failed: {e}")
+        return
 
 if __name__ == '__main__':
     main()

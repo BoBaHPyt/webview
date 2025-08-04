@@ -10,7 +10,7 @@ import (
     "fyne.io/fyne/v2"
     "fyne.io/fyne/v2/app"
     "fyne.io/fyne/v2/container"
-    "github.com/webview/webview"
+    "github.com/webview/webview2"
 )
 
 const customUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -23,7 +23,7 @@ func handleCustomProtocol(u *url.URL) (string, map[string]string) {
     return u.Host, cookies
 }
 
-func setCookies(wv webview.WebView, host string, cookies map[string]string) {
+func setCookies(wv webview2.WebView, host string, cookies map[string]string) {
     for key, value := range cookies {
         wv.Dispatch(func() {
             wv.Eval(fmt.Sprintf(`document.cookie="%s=%s";`, key, value))
@@ -36,7 +36,7 @@ func main() {
     w := a.NewWindow("Custom WebView")
 
     // Инициализация WebView
-    wv := webview.New(true)
+    wv := webview2.New(true)
     defer wv.Destroy()
 
     wv.SetSize(800, 600)

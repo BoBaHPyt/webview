@@ -3,3 +3,4 @@ pywebview[qt]
 pywebview[cef]
 pywebview[ssl]
 pyinstaller
+cryptography

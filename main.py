@@ -1,8 +1,10 @@
-from PyQt6.QtWidgets import QApplication, QMainWindow
+from PyQt6.QtWidgets import QApplication, QMainWindow, QToolBar, QLineEdit, QPushButton, QSizePolicy
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWebEngineCore import QWebEngineProfile
+from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEnginePage
+from PyQt6.QtCore import QUrl, Qt
+from PyQt6.QtNetwork import QNetworkCookie, QNetworkProxy
+from PyQt6.QtWebEngineCore import QWebEngineUrlRequestInterceptor, QWebEngineUrlRequestInfo
 from PyQt6.QtCore import QUrl
-from PyQt6.QtNetwork import QNetworkCookie
 from http.cookies import SimpleCookie
 import json
 import urllib.parse
@@ -10,6 +12,9 @@ import sys
 import os
 import subprocess
 import platform
+import base64
+import time
+
 
 class AutoTraderInstaller:
     def __init__(self):
@@ -103,7 +108,7 @@ Categories=Network;WebBrowser;
             print(f"❌ Failed to install on Linux: {e}")
             return False
 
-        
+
 class WindowsInstaller(AutoTraderInstaller):
     def __init__(self):
         super().__init__()
@@ -147,22 +152,89 @@ class WindowsInstaller(AutoTraderInstaller):
             return False
 
 
+class CustomUserAgentInterceptor(QWebEngineUrlRequestInterceptor):
+    def __init__(self, user_agent, parent=None):
+        super().__init__(parent)
+        self.user_agent = user_agent
+
+    def interceptRequest(self, info):
+        info.setHttpHeader(b"User-Agent", self.user_agent.encode())
+        
+
 class AutoTraderApp(QMainWindow):
     USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36"
+    #USER_AGENT = "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko) QtWebEngine/6.9.1 Chrome/130.0.0.0 Safari/537.36"
     
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AutoTrader")
         self.setGeometry(100, 100, 800, 600)
-        self.browser = QWebEngineView()
-        profile = self.browser.page().profile()
-        profile.setHttpUserAgent(self.USER_AGENT)
-        self.cookie_store = profile.cookieStore()
-        self.setCentralWidget(self.browser)
+        # --- Создание и настройка панели инструментов ---
+        self.toolbar = QToolBar()
+        self.toolbar.setMovable(False) # Фиксируем панель
+        self.addToolBar(self.toolbar)
+
+        # --- Поле ввода URL ---
+        self.url_bar = QLineEdit()
+        self.url_bar.setPlaceholderText("Введите URL и нажмите Enter...")
+        self.url_bar.returnPressed.connect(self.navigate_to_url)
+        self.toolbar.addWidget(self.url_bar)
+
+        # --- Кнопки закладок ---
+        self.toolbar.addSeparator() # Разделитель
+
+        btn_steam_inv = QPushButton("Steam (Инвентарь)")
+        btn_steam_inv.clicked.connect(lambda: self.load_bookmark_url("https://steamcommunity.com/my/inventory/"))
+        self.toolbar.addWidget(btn_steam_inv)
+
+        btn_steam_market = QPushButton("Steam (ТП)")
+        btn_steam_market.clicked.connect(lambda: self.load_bookmark_url("https://steamcommunity.com/market/"))
+        self.toolbar.addWidget(btn_steam_market)
+
+        btn_tm = QPushButton("TM")
+        btn_tm.clicked.connect(lambda: self.load_bookmark_url("https://market.csgo.com/"))
+        self.toolbar.addWidget(btn_tm)
+
+        btn_buff = QPushButton("Buff")
+        btn_buff.clicked.connect(lambda: self.load_bookmark_url("https://buff.163.com/"))
+        self.toolbar.addWidget(btn_buff)
+
+        # --- Веб-браузер ---
+        self.profile = QWebEngineProfile.defaultProfile()
+        self.interceptor = CustomUserAgentInterceptor(self.USER_AGENT, self)
+        self.profile.setUrlRequestInterceptor(self.interceptor)
+        self.profile.setHttpUserAgent(self.USER_AGENT)
+        self.browser = QWebEngineView(self.profile)
+        self.cookie_store = self.profile.cookieStore()
         
+        # Обновляем URL бар при переходе по страницам
+        self.browser.urlChanged.connect(self.update_url_bar)
+
+        self.setCentralWidget(self.browser)
+
         self.cookies = None
+        self.proxy = None
         self.host = None
         self.target_url = None
+        
+    def update_url_bar(self, qurl: QUrl):
+        """Обновляет текст в поле URL при изменении адреса страницы"""
+        self.url_bar.setText(qurl.toString())
+        self.url_bar.setCursorPosition(0) # Ставим курсор в начало
+
+    def navigate_to_url(self):
+        """Загружает страницу по адресу из поля ввода"""
+        url = self.url_bar.text()
+        if url:
+            # Если URL не содержит схемы, добавляем https://
+            if not url.startswith(("http://", "https://")):
+                url = "https://" + url
+            self.browser.load(QUrl(url))
+
+    def load_bookmark_url(self, url: str):
+        """Загружает заданный URL из закладки"""
+        self.browser.load(QUrl(url))
+        # URL бар обновится сам через сигнал urlChanged
         
     def parse_custom_url(self, url):
         """Парсинг кастомного URL"""
@@ -177,44 +249,74 @@ class AutoTraderApp(QMainWindow):
             cookies = query_params.get('cookies', [None])[0]
             if cookies:
                 cookies = json.loads(cookies)
+
+            proxy = query_params.get('proxy', [None])[0]
             
             # Формируем целевой URL
             target_url = f"https://{parsed.netloc}{parsed.path}"
             target_url = target_url.replace("https://https://", "https://")
-            
-            return target_url, parsed.hostname, cookies
+            return target_url, parsed.hostname, cookies, proxy
         except Exception as e:
+            raise e
             print(f"Error parsing URL: {e}")
             return 'https://market.csgo.com', None
     
     def set_cookies(self):
         """Установка куков после загрузки страницы"""
         sc = SimpleCookie()
-        for key, value in self.cookies.items():
-            sc[key] = value.replace(":", "%3A")
+        for key, data in self.cookies.items():
+            domain, value = data["domain"], data["value"]
+            value = value.replace(" ", "+")
+            #if "csgo.com" in domain or "dota2.net" in domain:
+            #    continue
+            sc[key] = base64.b64decode(value.encode()).decode()
+
+            if domain.count(".") > 1:
+                domain = "." + domain.split(".", 1)[1]
+                
+            sameSite = None
+            if key == "d2mid":
+                sameSite = "Lax"
             sc[key]['samesite'] = None
-            sc[key]['secure'] = True
-            sc[key]['domain'] = self.host
+            sc[key]['secure'] = not bool(sameSite)
+            sc[key]['httponly'] = True
+            sc[key]['domain'] = domain
 
         contents = sc.output().encode('ascii')
         contents = contents.replace(b"Set-Cookie: ", b"")
-        print(contents)
         self.cookie_store.deleteAllCookies()
         for qt_cookie in QNetworkCookie.parseCookies(contents):
             self.cookie_store.setCookie(qt_cookie)#, QUrl(self.target_url))
+
+    def set_proxy(self):
+        scheme, addr = self.proxy.split("://")
+        auth, addr = addr.split("@")
+        user, password = auth.split(":")
+        host, port = addr.split(":")
+
+        proxy = QNetworkProxy()
+        proxy.setType(QNetworkProxy.ProxyType.HttpProxy)
+        proxy.setHostName(host)
+        proxy.setPort(int(port))
+        proxy.setUser(user)
+        proxy.setPassword(password)
+
+        QNetworkProxy.setApplicationProxy(proxy)
+        
     
     def start_app(self, initial_url=None):
         """Запуск приложения"""
         if initial_url and initial_url.startswith('autotrader://'):
-            self.target_url, self.host, self.cookies = self.parse_custom_url(initial_url)
+            self.target_url, self.host, self.cookies, self.proxy = self.parse_custom_url(initial_url)
         else:
             self.target_url = 'https://market.csgo.com'
             self.cookies = None
             self.host = None
-        
+
         self.set_cookies()
+        #self.target_url = "http://127.0.0.1:8000"
+        self.set_proxy()
         self.browser.load(QUrl(self.target_url))
-        # self.browser.reload()
 
         
 def get_installer():
@@ -230,11 +332,18 @@ def get_installer():
 def main():
     """Основная функция приложения"""
     # Проверяем команды установки
+    chromium_args = [
+        f'--user-agent={AutoTraderApp.USER_AGENT}',
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-features=WebRtcHideLocalIpsWithMdns'  # Дополнительно для маскировки
+    ]
     if len(sys.argv) > 1:
         for argv in sys.argv:
             if argv.startswith('autotrader://'):
                 # Запуск с URL-схемой
-                app = QApplication(["AutoTraderApp"])
+                app = QApplication(["AutoTraderApp"] + chromium_args)
                 window = AutoTraderApp()
                 window.start_app(argv)
                 window.show()
